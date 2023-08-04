@@ -1,0 +1,8 @@
+{
+	"token": "",
+	"webhook": "/endpoint",
+	"secret": "QUEVEDO_BZRP_Random_String_52",
+	"openai_api_key": "",
+	"github_pat": "",
+	"default_priority": "Priority: 0 (Normal)"
+}
