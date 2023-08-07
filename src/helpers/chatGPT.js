@@ -1,4 +1,4 @@
-const { removeTags, removeNewlinesAndExtractValues } = require("./utils");
+const { removeNewlinesAndExtractValues } = require("./utils");
 const { PROMPT } = require("./prompt");
 
 const completeGPT3 = async (messageText) =>
@@ -10,7 +10,7 @@ const completeGPT3 = async (messageText) =>
 
 		const requestBody = {
 			model: 'text-davinci-003',
-			prompt: PROMPT.replace(/{messageText}/g, removeTags(messageText)),
+			prompt: PROMPT.replace(/{messageText}/g, messageText),
 			max_tokens: 1000,
 			temperature: 1, // Adjust temperature as needed
 		};

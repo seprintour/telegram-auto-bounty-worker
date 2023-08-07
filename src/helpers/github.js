@@ -1,11 +1,12 @@
 const { getClosestTimeLabel } = require("./time");
+const { generateGitHubIssueBody } = require("./utils");
 
 /**
  * Create Issue on Github
  */
-const createIssue = async (timeEstimate, organization, repository, issueTitle, issueBody) =>
+const createIssue = async (timeEstimate, organization, repository, issueTitle, messageText, messageLink) =>
 {
-	console.log('Creating Github Issue:', organization, repository, issueTitle, issueBody)
+	console.log('Creating Github Issue:', organization, repository, issueTitle, messageText, messageLink)
 	try
 	{
 		const apiUrl = `https://api.github.com/repos/${organization}/${repository}/issues`;
@@ -18,6 +19,9 @@ const createIssue = async (timeEstimate, organization, repository, issueTitle, i
 			DEFAULT_PRIORITY,
 			closestTimeLabel
 		]
+
+		// create body
+		const issueBody = generateGitHubIssueBody(messageText, messageLink)
 
 		const response = await fetch(apiUrl, {
 			method: 'POST',

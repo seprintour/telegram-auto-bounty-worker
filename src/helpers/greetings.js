@@ -1,12 +1,15 @@
-const GREETINGS = ["Hey", "Hi", "Hello", "Morning", "Afternoon", "Evening", "Hey there", "Hi there", "Greetings"];
+const GREETINGS = ["Hey", "Hi", "Hello", "Morning", "Afternoon", "Evening", "Greetings"];
 
-function isGreeting(chatMessage)
+const isGreeting = (chatMessage) =>
 {
 	// Convert the chat message to lowercase for case-insensitive matching
 	const lowerCaseChat = chatMessage.toLowerCase();
 
+	// Create a regular expression for word-level matching
+	const regex = new RegExp(`\\b(?:${GREETINGS.join('|')})\\b`, 'i');
+
 	// Check if the chat message contains any of the greeting words
-	return GREETINGS.some(greeting => lowerCaseChat.includes(greeting.toLowerCase()));
+	return regex.test(lowerCaseChat);
 }
 
 module.exports = {

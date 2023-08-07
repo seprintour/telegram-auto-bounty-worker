@@ -13,10 +13,20 @@ const escapeMarkdown = (str, except = '') =>
 	return str.replace(regEx, '\\$&')
 }
 
-const removeTags = (text) =>
+const extractNumberWithoutPrefix = (text) =>
 {
-	return text.replace(/@\w+/g, ''); // This regex will remove all occurrences of @tag
+	const numberWithoutPrefix = text.replace(/^(-)?\d{3}/, '');
+	return numberWithoutPrefix.length === 10 ? numberWithoutPrefix : null;
 }
+
+const cleanMessage = (text) =>
+{
+	// Remove all occurrences of @tag
+	const cleanedText = text.replace(/@\w+/g, '');
+
+	// Remove all occurrences of links (http and https)
+	return cleanedText.replace(/(https?:\/\/[^\s]+)/g, '');
+};
 
 function extractTag(text)
 {
@@ -64,10 +74,44 @@ const getRepoData = (groupId) =>
 	}
 }
 
+const generateMessageLink = (messageId, groupId) =>
+{
+	return `https://t.me/c/${extractNumberWithoutPrefix(groupId?.toString())}/${messageId?.toString()}`
+}
+
+const generateGitHubIssueBody = (interceptedMessage, telegramMessageLink) =>
+{
+	const quotedMessage = `> ${interceptedMessage.replace(/\n/g, '\n> ')}\n\n`;
+	return `${quotedMessage}${telegramMessageLink}`;
+}
+
+const extractTaskInfo = (text) =>
+{
+	const regex = /Click confirm to create new task "(.*?)" on @(.*?)\/(.*?) with time estimate (.+?)$/;
+	const match = text.match(regex);
+
+	if (match)
+	{
+		const [_, title, orgName, repoName, timeEstimate] = match;
+		return {
+			title,
+			orgName,
+			repoName,
+			timeEstimate,
+		};
+	} else
+	{
+		return null;
+	}
+}
+
 module.exports = {
 	removeNewlinesAndExtractValues,
-	removeTags,
+	cleanMessage,
 	escapeMarkdown,
 	getRepoData,
-	extractTag
+	extractTag,
+	generateMessageLink,
+	generateGitHubIssueBody,
+	extractTaskInfo
 }

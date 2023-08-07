@@ -5,7 +5,7 @@
 import { completeGPT3 } from "./helpers/chatGPT"
 import { createIssue } from "./helpers/github"
 import { isGreeting } from "./helpers/greetings"
-import { escapeMarkdown, extractTag, getRepoData } from "./helpers/utils"
+import { cleanMessage, escapeMarkdown, extractTag, extractTaskInfo, generateMessageLink, getRepoData } from "./helpers/utils"
 
 /**
  * Wait for requests to the worker
@@ -57,7 +57,18 @@ const onUpdate = async (update) =>
 {
 	if ('message' in update)
 	{
-		await onMessage(update.message)
+		try
+		{
+			await onMessage(update.message)
+		} catch (e)
+		{
+			console.log(e)
+		}
+	}
+
+	if ('callback_query' in update)
+	{
+		await onCallbackQuery(update.callback_query)
 	}
 }
 
@@ -97,20 +108,109 @@ const apiUrl = (methodName, params = null) =>
 }
 
 /**
+ * Answer callback query (inline button press)
+ * This stops the loading indicator on the button and optionally shows a message
+ * https://core.telegram.org/bots/api#sendmessage
+ */
+async function answerCallbackQuery(callbackQueryId, text = null)
+{
+	const data = {
+		callback_query_id: callbackQueryId
+	}
+	if (text)
+	{
+		data.text = text
+	}
+	return (await fetch(apiUrl('answerCallbackQuery', data))).json()
+}
+
+/**
+ * Handle incoming callback_query (inline button press)
+ * https://core.telegram.org/bots/api#message
+ */
+async function onCallbackQuery(callbackQuery)
+{
+	if (callbackQuery.data !== "create_task")
+	{
+		console.log('Not a create task callback')
+		return
+	}
+	const groupId = message.chat.id; // group id
+	const messageId = message.message.message_id;
+	//const senderId = message.from.id
+
+	// get message link
+	const messageLink = generateMessageLink(messageId, groupId);
+
+	const taskInfo = extractTaskInfo(callbackQuery.message.text)
+
+	const res = await createIssue(timeEstimate, orgName, repoName, issueTitle, msgText, messageLink)
+
+	console.log(`Issue created: ${res.html_url}`);
+
+
+	const { repoName, orgName } = getRepoData(groupId);
+
+	console.log(`Check: ${issueTitle}, ${timeEstimate} ${orgName}:${repoName}`);
+
+	if (!repoName || !orgName)
+	{
+		console.log(`No Github data mapped to channel`);
+		return;
+	}
+
+	const msg = escapeMarkdown(`*Issue created: [Check it out here](${res.html_url})* with time estimate *${timeEstimate}*`, '*`[]()');
+
+	await editBotMessage(callbackQuery.message.chat.id, callbackQuery.message.message_id, escapeMarkdown(`You pressed the button with data=\`${callbackQuery.data}\``, '`'))
+	return answerCallbackQuery(callbackQuery.id, 'Button press acknowledged!')
+}
+
+/**
  * Send text message formatted with MarkdownV2-style
  * Keep in mind that any markdown characters _*[]()~`>#+-=|{}.! that
  * are not part of your formatting must be escaped. Incorrectly escaped
  * messages will not be sent. See escapeMarkdown()
  * https://core.telegram.org/bots/api#sendmessage
  */
-const sendReply = async (chatId, messageId, text) =>
+const sendReply = async (
+	chatId,
+	messageId,
+	text
+) =>
 {
 	return (await fetch(apiUrl('sendMessage', {
 		chat_id: chatId,
 		text,
 		parse_mode: 'MarkdownV2',
-		reply_to_message_id: messageId
+		reply_to_message_id: messageId,
+		reply_markup: JSON.stringify({
+			inline_keyboard:
+				[[
+					{
+						text: 'Create Task',
+						callback_data: `create_task`
+					}
+				]]
+		}),
 	}))).json()
+}
+
+async function editBotMessage(chatId, messageId, newText)
+{
+	try
+	{
+		const response = await fetch(apiUrl('editMessageText', {
+			chat_id: chatId,
+			message_id: messageId,
+			text: newText,
+			parse_mode: 'MarkdownV2',
+		}));
+		return response.json();
+	} catch (error)
+	{
+		console.error('Error editing message:', error);
+		return null;
+	}
 }
 
 /**
@@ -131,8 +231,17 @@ const onMessage = async (message) =>
 		return;
 	}
 
+	const msgText = cleanMessage(message.text);
+
+	if (msgText === "")
+	{
+		console.log(`Skipping, message is empty`);
+		console.log(message)
+		return;
+	}
+
 	// Analyze the message with ChatGPT
-	const { issueTitle, timeEstimate } = await completeGPT3(message.text);
+	const { issueTitle, timeEstimate } = await completeGPT3(msgText);
 
 	if (!issueTitle)
 	{
@@ -144,24 +253,12 @@ const onMessage = async (message) =>
 	const messageId = message.message_id;
 	//const senderId = message.from.id
 
-	const { repoName, orgName } = getRepoData(groupId);
-
-	console.log(`Check: ${issueTitle}, ${timeEstimate} ${orgName}:${repoName}`);
-
-	if (!repoName || !orgName)
+	if (issueTitle)
 	{
-		console.log(`No Github data mapped to channel`);
-		return;
-	}
-
-	const res = await createIssue(timeEstimate, orgName, repoName, issueTitle, 'Auto-generated from telegram channel')
-
-	console.log(`Issue created: ${res.html_url}`);
-
-	const taggedUser = extractTag(message.text)
-
-	if (issueTitle && res.html_url)
-	{
-		return sendReply(groupId, messageId, escapeMarkdown(`${taggedUser + ' ' || ''}*Issue created: [Check it out here](${res.html_url})* with time estimate *${timeEstimate}*`, '*`[]()'))
+		return sendReply(
+			groupId,
+			messageId,
+			escapeMarkdown(`Click confirm to create new task *"${issueTitle}"* on [@${orgName}/${repoName}](https://github.com/${orgName}/${repoName}) with time estimate *${timeEstimate}*`, '*`[]()@/')
+		)
 	}
 }
