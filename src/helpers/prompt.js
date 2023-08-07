@@ -14,8 +14,9 @@ const PROMPT = `
 	6. If the message is a request for help or support, consider it suitable for a GitHub issue.
 	7. If the message proposes a task related to quality assurance, development, or project management, consider it suitable for a GitHub issue.
 	8. If the message involves contacting or reaching out to a specific person or team for a task, consider it suitable for a GitHub issue. However, ensure that the message provides sufficient context and details about the task.
+	9. If the message includes self-delegated tasks (e.g, texts containing "I", "i'd", or "me"), do not consider it suitable for a GitHub issue.
 
-	Please answer "Yes" and provide a good Issue Title always starting with Issue Title:(with a full stop at the end) and a reasonable Time Estimate always starting with Time Estimate:(with a full stop at the end) based on your experience if the message is suitable for a GitHub issue and "No" with a reason otherwise.Be reasonable and accurate with the time estimate, considering the complexity of the task mentioned in the message.
+	Please answer "Yes" and provide a good Issue Title always starting with Issue Title:(with a full stop at the end) and a reasonable Time Estimate always starting with Time Estimate:(with a full stop at the end) based on your experience if the message is suitable for a GitHub issue and "No" with a reason otherwise. Be reasonable, consistent and very accurate with the time estimate, considering the complexity of the task mentioned in the message.
 
 	Note: If the message contains a URL but does not describe a clear task, consider it "No" and provide the reason accordingly.
 `

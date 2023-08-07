@@ -5,7 +5,11 @@
 import { completeGPT3 } from "./helpers/chatGPT"
 import { createIssue } from "./helpers/github"
 import { isGreeting } from "./helpers/greetings"
-import { cleanMessage, escapeMarkdown, extractTag, extractTaskInfo, generateMessageLink, getRepoData } from "./helpers/utils"
+import { answerCallbackQuery, apiUrl, deleteBotMessage, editBotMessage, sendReply } from "./helpers/triggers";
+import { cleanMessage, createCooldownFunction, escapeMarkdown, extractTaskInfo, generateMessageLink, getRepoData } from "./helpers/utils"
+
+const cooldownTime = 60000; // 1 minute cooldown for message handler
+const cooldownFunction = createCooldownFunction(cooldownTime);
 
 /**
  * Wait for requests to the worker
@@ -95,47 +99,11 @@ const unRegisterWebhook = async (event) =>
 }
 
 /**
- * Return url to telegram api, optionally with parameters added
- */
-const apiUrl = (methodName, params = null) =>
-{
-	let query = ''
-	if (params)
-	{
-		query = '?' + new URLSearchParams(params).toString()
-	}
-	return `https://api.telegram.org/bot${TOKEN}/${methodName}${query}`
-}
-
-/**
- * Answer callback query (inline button press)
- * This stops the loading indicator on the button and optionally shows a message
- * https://core.telegram.org/bots/api#sendmessage
- */
-async function answerCallbackQuery(callbackQueryId, text = null)
-{
-	const data = {
-		callback_query_id: callbackQueryId
-	}
-	if (text)
-	{
-		data.text = text
-	}
-	return (await fetch(apiUrl('answerCallbackQuery', data))).json()
-}
-
-/**
  * Handle incoming callback_query (inline button press)
  * https://core.telegram.org/bots/api#message
  */
 async function onCallbackQuery(callbackQuery)
 {
-	if (callbackQuery.data !== "create_task")
-	{
-		console.log('Not a create task button')
-		return;
-	}
-
 	const groupId = callbackQuery.message.chat.id; // group id
 	const messageId = callbackQuery.message.message_id; // id for current message
 	const messageIdReply = callbackQuery.message.reply_to_message.message_id; // id of root message
@@ -143,79 +111,37 @@ async function onCallbackQuery(callbackQuery)
 	const messageText = callbackQuery.message.text // text of current message
 	const replyToMessage = callbackQuery.message.reply_to_message.text // text of root message
 
-	// get message link
-	const messageLink = generateMessageLink(messageIdReply, groupId);
-
-	const {
-		title,
-		timeEstimate,
-	} = extractTaskInfo(messageText); // extract issue info from text
-
-	const { repoName, orgName } = getRepoData(groupId);
-
-	console.log(`Check: ${title}, ${timeEstimate} ${orgName}:${repoName}`);
-
-	if (!repoName || !orgName)
+	if (callbackQuery.data === "create_task")
 	{
-		console.log(`No Github data mapped to channel`);
-		return;
-	}
+		// get message link
+		const messageLink = generateMessageLink(messageIdReply, groupId);
 
-	const res = await createIssue(timeEstimate, orgName, repoName, title, replyToMessage, messageLink)
+		const {
+			title,
+			timeEstimate,
+		} = extractTaskInfo(messageText); // extract issue info from text
 
-	console.log(`Issue created: ${res.html_url}`);
+		const { repoName, orgName } = getRepoData(groupId);
 
-	const msg = escapeMarkdown(`*Issue created: [Check it out here](${res.html_url})* with time estimate *${timeEstimate}*`, '*`[]()');
+		console.log(`Check: ${title}, ${timeEstimate} ${orgName}:${repoName}`);
 
-	await editBotMessage(groupId, messageId, msg)
-	return answerCallbackQuery(callbackQuery.id, 'issue created!')
-}
+		if (!repoName || !orgName)
+		{
+			console.log(`No Github data mapped to channel`);
+			return;
+		}
 
-/**
- * Send text message formatted with MarkdownV2-style
- * Keep in mind that any markdown characters _*[]()~`>#+-=|{}.! that
- * are not part of your formatting must be escaped. Incorrectly escaped
- * messages will not be sent. See escapeMarkdown()
- * https://core.telegram.org/bots/api#sendmessage
- */
-const sendReply = async (
-	chatId,
-	messageId,
-	text
-) =>
-{
-	return (await fetch(apiUrl('sendMessage', {
-		chat_id: chatId,
-		text,
-		parse_mode: 'MarkdownV2',
-		reply_to_message_id: messageId,
-		reply_markup: JSON.stringify({
-			inline_keyboard:
-				[[
-					{
-						text: 'Create Task',
-						callback_data: `create_task`
-					}
-				]]
-		}),
-	}))).json()
-}
+		const res = await createIssue(timeEstimate, orgName, repoName, title, replyToMessage, messageLink)
 
-const editBotMessage = async (chatId, messageId, newText) =>
-{
-	try
+		console.log(`Issue created: ${res.html_url}`);
+
+		const msg = escapeMarkdown(`*Issue created: [Check it out here](${res.html_url})* with time estimate *${timeEstimate}*`, '*`[]()');
+
+		await editBotMessage(groupId, messageId, msg)
+		return answerCallbackQuery(callbackQuery.id, 'issue created!');
+	} else if (callbackQuery.data === "reject_task")
 	{
-		const response = await fetch(apiUrl('editMessageText', {
-			chat_id: chatId,
-			message_id: messageId,
-			text: newText,
-			parse_mode: 'MarkdownV2',
-		}));
-		return response.json();
-	} catch (error)
-	{
-		console.error('Error editing message:', error);
-		return null;
+		deleteBotMessage(groupId, messageId)
 	}
 }
 
@@ -226,6 +152,15 @@ const editBotMessage = async (chatId, messageId, newText) =>
 const onMessage = async (message) =>
 {
 	console.log(`Received message: ${message.text}`);
+
+	// check if cooldown
+	const isReady = cooldownFunction();
+
+	if (!isReady)
+	{
+		console.log(`Skipping, bot on cooldown`);
+		return;
+	}
 
 	// check if its a greeting or blacklisted word to save chatgpt calls
 	const greetings = isGreeting(message.text);
@@ -271,7 +206,7 @@ const onMessage = async (message) =>
 		return sendReply(
 			groupId,
 			messageId,
-			escapeMarkdown(`Click confirm to create new task *"${issueTitle}"* on [@${orgName}/${repoName}](https://github.com/${orgName}/${repoName}) with time estimate *${timeEstimate}*`, '*`[]()@/')
+			escapeMarkdown(`Click confirm to create new task *"${issueTitle}"* on *${orgName}/${repoName}* with time estimate *${timeEstimate}*`, '*`[]()@/')
 		)
 	}
 }

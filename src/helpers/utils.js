@@ -105,6 +105,25 @@ const extractTaskInfo = (text) =>
 	}
 }
 
+const createCooldownFunction = (cooldownTimeInMilliseconds) =>
+{
+	let lastCallTime = 0;
+
+	return function ()
+	{
+		const currentTime = Date.now();
+		if (currentTime - lastCallTime >= cooldownTimeInMilliseconds)
+		{
+			lastCallTime = currentTime;
+			return true;
+		} else
+		{
+			return false;
+		}
+	};
+}
+
+
 module.exports = {
 	removeNewlinesAndExtractValues,
 	cleanMessage,
@@ -113,5 +132,6 @@ module.exports = {
 	extractTag,
 	generateMessageLink,
 	generateGitHubIssueBody,
-	extractTaskInfo
+	extractTaskInfo,
+	createCooldownFunction
 }
