@@ -132,26 +132,28 @@ async function onCallbackQuery(callbackQuery)
 {
 	if (callbackQuery.data !== "create_task")
 	{
-		console.log('Not a create task callback')
-		return
+		console.log('Not a create task button')
+		return;
 	}
-	const groupId = message.chat.id; // group id
-	const messageId = message.message.message_id;
+
+	const groupId = callbackQuery.message.chat.id; // group id
+	const messageId = callbackQuery.message.message_id; // id for current message
+	const messageIdReply = callbackQuery.message.reply_to_message.message_id; // id of root message
 	//const senderId = message.from.id
+	const messageText = callbackQuery.message.text // text of current message
+	const replyToMessage = callbackQuery.message.reply_to_message.text // text of root message
 
 	// get message link
-	const messageLink = generateMessageLink(messageId, groupId);
+	const messageLink = generateMessageLink(messageIdReply, groupId);
 
-	const taskInfo = extractTaskInfo(callbackQuery.message.text)
-
-	const res = await createIssue(timeEstimate, orgName, repoName, issueTitle, msgText, messageLink)
-
-	console.log(`Issue created: ${res.html_url}`);
-
+	const {
+		title,
+		timeEstimate,
+	} = extractTaskInfo(messageText); // extract issue info from text
 
 	const { repoName, orgName } = getRepoData(groupId);
 
-	console.log(`Check: ${issueTitle}, ${timeEstimate} ${orgName}:${repoName}`);
+	console.log(`Check: ${title}, ${timeEstimate} ${orgName}:${repoName}`);
 
 	if (!repoName || !orgName)
 	{
@@ -159,10 +161,14 @@ async function onCallbackQuery(callbackQuery)
 		return;
 	}
 
+	const res = await createIssue(timeEstimate, orgName, repoName, title, replyToMessage, messageLink)
+
+	console.log(`Issue created: ${res.html_url}`);
+
 	const msg = escapeMarkdown(`*Issue created: [Check it out here](${res.html_url})* with time estimate *${timeEstimate}*`, '*`[]()');
 
-	await editBotMessage(callbackQuery.message.chat.id, callbackQuery.message.message_id, escapeMarkdown(`You pressed the button with data=\`${callbackQuery.data}\``, '`'))
-	return answerCallbackQuery(callbackQuery.id, 'Button press acknowledged!')
+	await editBotMessage(groupId, messageId, msg)
+	return answerCallbackQuery(callbackQuery.id, 'issue created!')
 }
 
 /**
@@ -195,7 +201,7 @@ const sendReply = async (
 	}))).json()
 }
 
-async function editBotMessage(chatId, messageId, newText)
+const editBotMessage = async (chatId, messageId, newText) =>
 {
 	try
 	{
@@ -251,7 +257,14 @@ const onMessage = async (message) =>
 
 	const groupId = message.chat.id; // group id
 	const messageId = message.message_id;
-	//const senderId = message.from.id
+
+	const { repoName, orgName } = getRepoData(groupId);
+
+	if (!repoName || !orgName)
+	{
+		console.log(`No Github data mapped to channel`);
+		return;
+	}
 
 	if (issueTitle)
 	{

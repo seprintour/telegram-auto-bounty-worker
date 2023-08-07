@@ -31,7 +31,7 @@ const createIssue = async (timeEstimate, organization, repository, issueTitle, m
 				'User-Agent': 'Telegram Cloudflare Worker',
 			},
 			body: JSON.stringify({
-				title: issueTitle,
+				title: `Chat Assist: ${issueTitle}`,
 				body: issueBody,
 				labels,
 			}),
