@@ -1,4 +1,3 @@
-const { getClosestTimeLabel } = require("./time");
 const { generateGitHubIssueBody } = require("./utils");
 
 /**
@@ -11,13 +10,10 @@ const createIssue = async (timeEstimate, organization, repository, issueTitle, m
 	{
 		const apiUrl = `https://api.github.com/repos/${organization}/${repository}/issues`;
 
-		// get time label
-		const closestTimeLabel = getClosestTimeLabel(timeEstimate);
-
 		// labels array
 		const labels = [
 			DEFAULT_PRIORITY,
-			closestTimeLabel
+			`Time: <${timeEstimate}`
 		]
 
 		// create body
@@ -31,7 +27,7 @@ const createIssue = async (timeEstimate, organization, repository, issueTitle, m
 				'User-Agent': 'Telegram Cloudflare Worker',
 			},
 			body: JSON.stringify({
-				title: `Chat Assist: ${issueTitle}`,
+				title: issueTitle,
 				body: issueBody,
 				labels,
 			}),
